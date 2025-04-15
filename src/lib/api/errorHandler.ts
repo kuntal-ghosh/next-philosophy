@@ -1,25 +1,39 @@
-import { ZodError } from 'zod';
-import { NextRequest } from 'next/server';
+import { ZodError } from "zod";
+import { NextRequest } from "next/server";
 
 // Error types for classification
 export enum ErrorType {
-  VALIDATION = 'validation_error',
-  DATABASE = 'database_error',
-  NOT_FOUND = 'not_found',
-  CONFLICT = 'resource_conflict',
-  UNAUTHORIZED = 'unauthorized',
-  FORBIDDEN = 'forbidden',
-  INTERNAL = 'internal_server_error',
+  VALIDATION = "validation_error",
+  DATABASE = "database_error",
+  NOT_FOUND = "not_found",
+  CONFLICT = "resource_conflict",
+  UNAUTHORIZED = "unauthorized",
+  FORBIDDEN = "forbidden",
+  INTERNAL = "internal_server_error",
 }
 
-// Error response interface
-export interface ErrorResponse {
-  status: 'error';
-  code: string;
-  message: string;
-  errors?: any;
-  details?: string;
-}
+// Standardized API response type
+export type ApiResponse<T> = {
+  success: boolean;
+  data: T;
+  meta: {
+    timestamp: string;
+    locale?: string;
+    count?: number;
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+  message?: string;
+  error?: {
+    code: string;
+    errors?: any;
+    details?: string;
+  };
+};
 
 // HTTP status code mapping
 const errorStatusCodes: Record<ErrorType, number> = {
@@ -32,6 +46,27 @@ const errorStatusCodes: Record<ErrorType, number> = {
   [ErrorType.INTERNAL]: 500,
 };
 
+// Create a standardized API response
+export function createApiResponse<T>(
+  data: T,
+  success = true,
+  message?: string,
+  meta?: Partial<ApiResponse<T>["meta"]>,
+  error?: ApiResponse<T>["error"]
+): ApiResponse<T> {
+  return {
+    success,
+    data,
+    message,
+    meta: {
+      timestamp: new Date().toISOString(),
+      locale: process.env.DEFAULT_LOCALE || "en",
+      ...meta,
+    },
+    ...(error && { error }),
+  };
+}
+
 // Generic error handler function
 export function handleError(
   error: Error | ZodError | unknown,
@@ -39,50 +74,55 @@ export function handleError(
   customMessage?: string
 ): Response {
   // Determine error message and details
-  let message = customMessage || 'An unexpected error occurred';
+  let message = customMessage || "An unexpected error occurred";
   let code = type;
   let errors = undefined;
   let details = undefined;
-  
+
   // Handle Zod validation errors
   if (error instanceof ZodError) {
     type = ErrorType.VALIDATION;
     code = ErrorType.VALIDATION;
-    message = customMessage || 'Invalid data provided';
+    message = customMessage || "Invalid data provided";
     errors = error.format();
   }
-  
+
   // Add debug details in development
-  if (process.env.NODE_ENV === 'development' && error instanceof Error) {
+  if (process.env.NODE_ENV === "development" && error instanceof Error) {
     details = error.stack || error.message;
   }
-  
+
   // Build error response
-  const errorResponse: ErrorResponse = {
-    status: 'error',
+  const errorResponse = createApiResponse(null, false, message, undefined, {
     code,
-    message,
     ...(errors && { errors }),
     ...(details && { details }),
-  };
-  
+  });
+
   return new Response(JSON.stringify(errorResponse), {
     status: errorStatusCodes[type],
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 }
 
 // Helper functions for common error scenarios
-export function handleValidationError(error: ZodError, message?: string): Response {
+export function handleValidationError(
+  error: ZodError,
+  message?: string
+): Response {
   return handleError(error, ErrorType.VALIDATION, message);
 }
 
 export function handleDatabaseError(error: Error, message?: string): Response {
-  return handleError(error, ErrorType.DATABASE, message || 'Database operation failed');
+  return handleError(
+    error,
+    ErrorType.DATABASE,
+    message || "Database operation failed"
+  );
 }
 
 export function handleNotFoundError(resource?: string): Response {
-  const message = resource ? `${resource} not found` : 'Resource not found';
+  const message = resource ? `${resource} not found` : "Resource not found";
   return handleError(new Error(message), ErrorType.NOT_FOUND, message);
 }
 
@@ -91,21 +131,21 @@ export function handleConflictError(message: string): Response {
 }
 
 export function handleInternalError(error: Error): Response {
-  return handleError(error, ErrorType.INTERNAL, 'An unexpected error occurred');
+  return handleError(error, ErrorType.INTERNAL, "An unexpected error occurred");
 }
 
 // Success response helper
-export function createSuccessResponse(data: any, status = 200): Response {
-  return new Response(
-    JSON.stringify({
-      status: 'success',
-      data,
-    }),
-    {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    }
-  );
+export function createSuccessResponse(
+  data: any,
+  status = 200,
+  message?: string
+): Response {
+  const response = createApiResponse(data, true, message);
+
+  return new Response(JSON.stringify(response), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 // Type for API route handlers
@@ -123,13 +163,15 @@ export function withErrorHandling(handler: ApiRouteHandler): ApiRouteHandler {
       // Handle Prisma errors
       if (error.code) {
         // Prisma not found error
-        if (error.code === 'P2025') {
-          return handleNotFoundError(error.meta?.cause || 'Resource');
+        if (error.code === "P2025") {
+          return handleNotFoundError(error.meta?.cause || "Resource");
         }
         // Prisma unique constraint violation
-        if (error.code === 'P2002') {
-          const field = error.meta?.target?.[0] || 'field';
-          return handleConflictError(`Resource with this ${field} already exists`);
+        if (error.code === "P2002") {
+          const field = error.meta?.target?.[0] || "field";
+          return handleConflictError(
+            `Resource with this ${field} already exists`
+          );
         }
       }
 
@@ -139,7 +181,7 @@ export function withErrorHandling(handler: ApiRouteHandler): ApiRouteHandler {
       }
 
       // Handle any other errors
-      console.error('API route error:', error);
+      console.error("API route error:", error);
       return handleInternalError(error);
     }
   };
