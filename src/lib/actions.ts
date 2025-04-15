@@ -1,28 +1,55 @@
 "use server";
 
-import { Product } from './api';
+import { Product, SearchState } from "./api";
 
 export async function searchProducts(
-  prevState: { products: Product[], query: string },
+  _prevState: SearchState,
   formData: FormData
-) {
-  const query = formData.get('query') as string;
+): Promise<SearchState> {
+  // console.log("🚀 ~ _prevState:", _prevState)
   
-  if (!query) {
-    return { products: [], query: '' };
-  }
+  // Extract query from form data
+  const query = formData.get("query") as string;
   
-  const res = await fetch(`${process.env.API_URL}/products/search?q=${encodeURIComponent(query)}`);
-  
-  if (!res.ok) {
-    return { 
-      products: [], 
-      query,
-      error: 'Failed to search products'
+  // Return early if empty query
+  if (!query.trim()) {
+    return {
+      products: [],
+      isLoading: false,
+      query: "",
     };
   }
   
-  const products = await res.json();
-  
-  return { products, query };
+  try {
+    // Fetch products from API
+    console.log("🚀 ~ query:", query)
+    const res = await fetch(
+      `https://dummyjson.com/products/search?q=${encodeURIComponent(query)}`,
+      { cache: "no-store" }
+    );
+    
+    // Handle API errors
+    if (!res.ok) {
+      throw new Error(`Search failed with status ${res.status}`);
+    }
+    
+    // Parse API response
+    const data = await res.json();
+    
+    // Return the new state
+    return {
+      products: data.products,
+      isLoading: false,
+      query,
+    };
+  } catch (error) {
+    // Handle and return errors
+    console.error("Search error:", error);
+    return {
+      products: [],
+      isLoading: false,
+      error: "Failed to search products. Please try again.",
+      query,
+    };
+  }
 }

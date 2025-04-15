@@ -24,6 +24,13 @@ export type Category = {
   name: string;
 };
 
+export type SearchState = {
+  products: Product[];
+  isLoading: boolean;
+  error?: string;
+  query: string;
+};
+
 // API functions
 export async function getProducts(categoryId?: string) {
   const url = categoryId 
@@ -69,7 +76,7 @@ export async function getRelatedProducts(productId: string) {
 
 export async function getCategories() {
   const res = await fetch(`${process.env.API_URL}/categories`, {
-    next: { revalidate: 86400 } // Cache for a day
+    // next: { revalidate: 86400 } // Cache for a day
   });
   
   if (!res.ok) throw new Error("Failed to fetch categories");

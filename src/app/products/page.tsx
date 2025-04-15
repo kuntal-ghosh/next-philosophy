@@ -3,12 +3,14 @@ import { getCategory } from '@/lib/data-loaders';
 
 export default async function ProductsPage() {
   const products = await getProducts();
-  
+       // Validate that we have arrays to prevent mapping errors
+       const validProducts = Array.isArray(products) ? products : [];
+    
   return (
     <div className="products-page">
       <h1>All Products</h1>
       <div className="product-grid">
-        {products.map(product => (
+        {validProducts.map(product => (
           <ProductCard key={product.id} product={product} />
         ))}
       </div>
